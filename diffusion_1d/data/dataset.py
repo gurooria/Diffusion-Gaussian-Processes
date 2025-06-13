@@ -25,7 +25,7 @@ def sin_1d(n_samples:int, seed:int=None) -> tuple[np.ndarray, np.ndarray]:
     def f(x): # True function
         return 1 + np.sin(2 * np.pi * x)
     def noise_std(x): # Heteroscedastic noise
-        return 0.1 + 0.4 * np.cos(3 * np.pi * x)**2
+        return 0.5 + 0.4 * np.cos(6 * np.pi * x)
     
     # Generate random x values
     x[:] = np.random.rand(n_samples) # sample from standard uniform distribution

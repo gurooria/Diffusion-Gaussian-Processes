@@ -6,11 +6,13 @@ from tqdm import tqdm
 import numpy as np
 from models.mlp import ScoreModel
 from utils.diffusion import Diffusion
+# from models.gp import ScoreModel
 
 def train_score_mlp(
     train_loader,
     val_loader,
     hidden_dims: list[int] = [8, 16, 32],
+    time_embed_dim: int = 128,
     epoch_update: int = 10,
     num_epochs: int = 100,
     time_steps: int = 1000,
@@ -32,7 +34,7 @@ def train_score_mlp(
     # Initialisations
     device = torch.device(device_type)
     diffusion = Diffusion(T=time_steps, device=device)
-    model = ScoreModel(hidden_dims=hidden_dims).to(device)
+    model = ScoreModel(hidden_dims=hidden_dims, time_embed_dim=time_embed_dim).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = nn.MSELoss()
 
