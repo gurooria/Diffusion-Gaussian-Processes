@@ -50,8 +50,8 @@ def train_score_mlp(
         train_epoch_loss = 0
         train_num_batches = 0
         for batch in train_loader:
-            x = batch['x'].to(device) # (batch_size,)
-            y0 = batch['y'].to(device) # (batch_size,)
+            x = batch['X'].to(device)[:,0] # (batch_size,)
+            y0 = batch['y'].to(device)[:,0] # (batch_size,)
 
             # Sample a random time step between 1 to T for each sample in the batch
             t = torch.randint(1, time_steps, (x.shape[0],), device=device)
@@ -78,8 +78,8 @@ def train_score_mlp(
         val_num_batches = 0
         with torch.no_grad():
             for batch in val_loader:
-                x = batch['x'].to(device)
-                y0 = batch['y'].to(device)
+                x = batch['X'].to(device)[:,0]
+                y0 = batch['y'].to(device)[:,0]
                 t = torch.randint(1, time_steps, (x.shape[0],), device=device)
                 noise = torch.randn_like(y0, device=device)
                 y_t = diffusion.q_sample(y0, t, noise)
