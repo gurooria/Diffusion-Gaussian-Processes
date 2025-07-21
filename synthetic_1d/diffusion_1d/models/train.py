@@ -6,7 +6,6 @@ from tqdm import tqdm
 import numpy as np
 from models.mlp import ScoreModel
 from utils.diffusion import Diffusion
-# from models.gp import ScoreModel
 
 def train_score_mlp(
     train_loader,
