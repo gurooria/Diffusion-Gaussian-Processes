@@ -4,6 +4,19 @@ from exactGPs import ExactGP
 
 ## Evaluation metrics for all models
 def evaluate_metrics(pred_mean, pred_var, test_y, mean_y, type='rmse'):
+    """
+    Function to evaluate the metrics of a DGP model.
+
+    Args:
+        pred_mean (torch.Tensor): Predicted mean of the DGP model from samples.
+        pred_var (torch.Tensor): Predicted variance of the DGP model from samples.
+        test_y (torch.Tensor): True test data points.
+        mean_y (torch.Tensor): True mean of the test data points.
+        type (str): Type of metric to evaluate.
+
+    Returns:
+        metric (float): Evaluated metric value.
+    """
     def univariate_nll(test_y, pred_mean, pred_var):
         return 0.5 * torch.log(2 * torch.pi * pred_var) + (test_y - pred_mean)**2 / (2 * pred_var)
 

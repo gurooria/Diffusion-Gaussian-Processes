@@ -5,14 +5,45 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import StandardScaler
 
-## True underlying distribution of synthetic 1D datasets
-def sin_1d(x) -> tuple[np.ndarray, np.ndarray]: 
-    # True underlying distribution
-    def f(x): # mean
-        return 1 + np.sin(2 * np.pi * x)
-    def sigma(x): # std
-        return 0.5 + 0.4 * np.cos(6 * np.pi * x)
-    return f(x), sigma(x)
+## Generate synthetic datasets
+def synthetic(x, name):
+    """
+    Generate synthetic 1D toy functions.
+
+    Args:
+        x (torch.Tensor): Input features of shape (n_samples, 1).
+        name (str): Name of the synthetic function.
+
+    Returns:
+        mean (torch.Tensor): Mean of the synthetic dataset of shape (n_samples, 1).
+        sigma (torch.Tensor): Standard deviation of the synthetic dataset of shape (n_samples, 1).
+    """
+    # Sinusoidal function with heteroscedastic Gaussian noise
+    if name == 'sinusoidal':
+        def f(x): # mean
+            return 1 + torch.sin(2 * torch.pi * x)
+        def sigma(x): # std
+            return 0.5 + 0.4 * torch.cos(6 * torch.pi * x)
+        return f(x), sigma(x)
+
+    # Piecewise linear function with log-normal noise
+    elif name == 'piecewise':
+        # Define breakpoints and slopes of piecewise linear function
+        breakpoints = torch.tensor([0.0, 0.3, 0.6, 0.8, 1.0])
+        slopes = torch.tensor([6.0, -12.0, 15.0, 0])  # num_pieces = 3
+        intercepts = torch.zeros_like(slopes)
+        for i in range(1, len(slopes)):
+            intercepts[i] = (slopes[i - 1] * breakpoints[i] + intercepts[i - 1]) - slopes[i] * breakpoints[i]
+        def f(x):
+            idx = torch.bucketize(x.squeeze(-1), breakpoints[1:], right=False)
+            return (slopes[idx] * x.squeeze(-1) + intercepts[idx]).reshape(x.shape)
+        def sigma(x):
+            return torch.full_like(x, 0.5)  # sigma = 0.5
+        return f(x), sigma(x)
+
+    ## Invalid function name
+    else:
+        raise ValueError(f"Invalid synthetic function name: {name}, choose from 'sinusoidal' or 'piecewise'")
 
 ## Dataset class for diffusion models
 class DiffusionDataset(Dataset):
@@ -23,31 +54,35 @@ class DiffusionDataset(Dataset):
         dataset_name (str): Name of the dataset to load.
         x_normalise (bool): Whether to normalise x.
         y_normalise (bool): Whether to normalise y.
-        seed (int): Random seed.
-        device (str): Device to use for the dataset.
 
     Returns:
         x (torch.Tensor): Input features of shape (n_samples, n_features).
         y (torch.Tensor): Target values of shape (n_samples, 1).
     """
-    def __init__(self, dataset_name:str, x_normalise:bool=False, y_normalise:bool=False, device:str=None):
+    def __init__(self, dataset_name, x_normalise=False, y_normalise=False):
         # Initialisations
         self.dataset_name = dataset_name
         self.x_scaler = None
         self.y_scaler = None
-        if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            self.device = torch.device(device)
 
-        # Load raw datasets
-        if self.dataset_name == 'sin_1d':
-            np.random.seed(42) # fixed seed for reproducibility
-            self.x = np.random.rand(4000)
-            mean, sigma = sin_1d(self.x)
-            self.y = mean + sigma * np.random.randn(mean.shape[0])
+        # Load raw datasets -> x, y = tensors
+        if self.dataset_name == 'sinusoidal':
+            torch.manual_seed(42) # fixed seed for reproducibility
+            self.x = torch.rand(5000, dtype=torch.float32)
+            mean, sigma = synthetic(x=self.x, name='sinusoidal')
+            mean = torch.tensor(mean, dtype=torch.float32)
+            sigma = torch.tensor(sigma, dtype=torch.float32)
+            self.y = mean + sigma * torch.randn(mean.shape[0], dtype=torch.float32)
+        elif self.dataset_name == 'piecewise':
+            torch.manual_seed(42) # fixed seed for reproducibility
+            self.x = torch.rand(5000, dtype=torch.float32)
+            mean, sigma = synthetic(x=self.x, name='piecewise')
+            mean = torch.tensor(mean, dtype=torch.float32)
+            sigma = torch.tensor(sigma, dtype=torch.float32)
+            self.y = mean * torch.exp(sigma * torch.randn(mean.shape[0], dtype=torch.float32))
         else: # UCI datasets
-            self.x, self.y = fetch_openml(dataset_name, version=1, return_X_y=True, as_frame=False)
+            self.x = uci_Dataset(self.dataset_name).x
+            self.y = uci_Dataset(self.dataset_name).y
 
         # Reshape x and y to 2D if they are 1D
         if self.x.ndim == 1:
@@ -56,6 +91,7 @@ class DiffusionDataset(Dataset):
         if self.y.ndim == 1:
             print(f"Reshaping y from 1D to 2D, shape: {self.y.shape} -> {self.y.shape[0],1}")
             self.y = self.y.reshape(-1,1)
+        
         # Normalisation to mean 0 and std 1
         if x_normalise:
             self.x_scaler = StandardScaler()
@@ -64,13 +100,14 @@ class DiffusionDataset(Dataset):
             self.y_scaler = StandardScaler()
             self.y = self.y_scaler.fit_transform(self.y)
 
-        # Convert to torch tensors with float32 dtype
-        self.x = torch.tensor(self.x, dtype=torch.float32, device=self.device)
-        self.y = torch.tensor(self.y, dtype=torch.float32, device=self.device)
+        # Convert to torch tensors of desired format
+        self.x = torch.tensor(self.x, dtype=torch.float32)
+        self.y = torch.tensor(self.y, dtype=torch.float32)
 
-        # Output checks for x and y
-        assert self.x.ndim == 2 and self.y.ndim == 2, f"x and y must be 2D arrays, but got {self.x.ndim} and {self.y.ndim}"
-        assert type(self.x) == torch.Tensor and type(self.y) == torch.Tensor, f"x and y must be torch.Tensor, but got {type(self.x)} and {type(self.y)}"
+        # Check data formats before returning
+        assert self.x.ndim == 2 and self.y.ndim == 2, f"x and y must be 2D tensors, got {self.x.ndim} and {self.y.ndim}"
+        assert type(self.x) == torch.Tensor and type(self.y) == torch.Tensor, f"x and y must be tensors, got {type(self.x)} and {type(self.y)}"
+        assert self.x.dtype == torch.float32 and self.y.dtype == torch.float32, f"x and y must be float32 tensors, got {self.x.dtype} and {self.y.dtype}"
 
     def __len__(self) -> int:
         return len(self.x)
